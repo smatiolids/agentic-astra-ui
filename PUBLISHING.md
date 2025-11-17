@@ -6,14 +6,14 @@ This guide explains how to publish the frontend as an npm package that can be ru
 
 1. An npm account (create one at https://www.npmjs.com/signup)
 2. Login to npm: `npm login`
-3. Make sure the package name is available on npm (or use a scoped package like `@your-username/agentic-astra-catalog`)
+3. Make sure the package name is available on npm (or use a scoped package like `@your-username/agentic-astra-ui`)
 
 ## Publishing Steps
 
 ### 1. Update Package Information
 
 Before publishing, update the following in `package.json`:
-- `name`: Make sure it's unique on npm (or use a scoped name like `@your-username/agentic-astra-catalog`)
+- `name`: Make sure it's unique on npm (or use a scoped name like `@your-username/agentic-astra-ui`)
 - `version`: Follow semantic versioning (e.g., 0.0.1, 0.1.0, 1.0.0)
 - `repository.url`: Update with your actual repository URL
 - `author`: Update if needed
@@ -27,28 +27,25 @@ Test the package locally before publishing:
 npm pack
 
 # This creates a .tgz file. Test it:
-npm install -g ./agentic-astra-catalog-0.0.1.tgz
+npm install -g ./agentic-astra-ui-0.0.1.tgz
 
 # Then test running it:
-agentic-astra-catalog
+agentic-astra-ui
 ```
 
 Or test with `npx` directly from the directory:
 
 ```bash
-npx ./bin/agentic-astra-catalog.js
+npx ./bin/agentic-astra-ui.js
 ```
 
 ### 3. Publish to npm
 
 ```bash
-# Make sure you're in the frontend directory
-cd frontend
-
 # Publish (first time)
 npm publish
 
-# For scoped packages (if using @your-username/agentic-astra-catalog):
+# For scoped packages (if using @your-username/agentic-astra-ui):
 npm publish --access public
 ```
 
@@ -73,14 +70,14 @@ npm publish
 Once published, users can run it with:
 
 ```bash
-npx agentic-astra-catalog
+npx agentic-astra-ui
 ```
 
 Or install it globally:
 
 ```bash
-npm install -g agentic-astra-catalog
-agentic-astra-catalog
+npm install -g agentic-astra-ui
+agentic-astra-ui
 ```
 
 ## Environment Variables
@@ -99,7 +96,7 @@ ASTRA_DB_CATALOG_COLLECTION=tool_catalog
 ## Troubleshooting
 
 ### Package name already taken
-- Use a scoped package: `@your-username/agentic-astra-catalog`
+- Use a scoped package: `@your-username/agentic-astra-ui`
 - Or choose a different name
 
 ### Permission errors

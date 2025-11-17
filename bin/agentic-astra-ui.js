@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * CLI entry point for agentic-astra-catalog
+ * CLI entry point for agentic-astra-ui
  * This script runs the Next.js development server
  */
 
@@ -20,7 +20,7 @@ function runNextDev() {
   const port = process.env.PORT || '3000';
   const hostname = process.env.HOSTNAME || 'localhost';
   
-  console.log(`🚀 Starting Agentic Astra Catalog...`);
+  console.log(`🚀 Starting Agentic Astra UI...`);
   console.log(`📦 Package directory: ${packageDir}`);
   console.log(`🌐 Server will be available at http://${hostname}:${port}`);
   console.log(`\n💡 Make sure to set up your .env.local file with Astra DB credentials!\n`);

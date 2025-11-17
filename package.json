@@ -1,10 +1,10 @@
 {
-  "name": "agentic-astra-catalog",
+  "name": "agentic-astra-ui",
   "version": "0.0.1",
   "description": "Next.js frontend for managing Astra DB tool catalog",
-  "main": "bin/agentic-astra-catalog.js",
+  "main": "bin/agentic-astra-ui.js",
   "bin": {
-    "agentic-astra-catalog": "./bin/agentic-astra-catalog.js"
+    "agentic-astra-ui": "./bin/agentic-astra-ui.js"
   },
   "keywords": [
     "astra",
@@ -38,7 +38,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "echo '✅ Agentic Astra Catalog installed! Run with: npx agentic-astra-catalog'"
+    "postinstall": "echo '✅ Agentic Astra UI installed! Run with: npx agentic-astra-ui'"
   },
   "dependencies": {
     "@datastax/astra-db-ts": "^2.1.2",
