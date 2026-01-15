@@ -44,7 +44,7 @@ Run the development server:
 npm run dev
 ```
 
-The app will be available at `http://localhost:3000`.
+The app will be available at `http://localhost:5150`.
 
 ## Building
 
@@ -66,7 +66,7 @@ npm start
 
 1. Set up environment variables (see Setup above)
 2. Run `npm run dev`
-3. Open the app in your browser at `http://localhost:3000`
+3. Open the app in your browser at `http://localhost:5150`
 
 ## Environment Variables
 

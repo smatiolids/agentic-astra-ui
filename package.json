@@ -1,7 +1,7 @@
 {
   "name": "agentic-astra-ui",
   "version": "0.0.1",
-  "description": "Next.js frontend for managing Astra DB tool catalog",
+  "description": "UI for managing the Agentic Astra tool catalog",
   "main": "bin/agentic-astra-ui.js",
   "bin": {
     "agentic-astra-ui": "./bin/agentic-astra-ui.js"
@@ -11,14 +11,13 @@
     "datastax",
     "catalog",
     "tools",
-    "nextjs",
     "react"
   ],
   "author": "Samuel Matioli",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/astra-mcp-server.git",
+    "url": "https://github.com/smatiolids/agentic-astra-ui.git",
     "directory": "frontend"
   },
   "files": [
@@ -34,7 +33,7 @@
     "README.md"
   ],
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p ${PORT:-5150}",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -42,10 +41,16 @@
   },
   "dependencies": {
     "@datastax/astra-db-ts": "^2.1.2",
+    "@langchain/core": "^0.3.40",
+    "@langchain/langgraph": "^0.2.74",
+    "@langchain/openai": "^0.4.0",
+    "dotenv": "^16.3.1",
+    "langchain": "^0.3.37",
     "next": "^14.0.4",
     "openai": "^4.20.1",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.10.6",

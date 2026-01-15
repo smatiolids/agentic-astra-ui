@@ -20,6 +20,7 @@ export interface Tool {
   tags?: string[];
   type: string;
   name: string;
+  title?: string;
   description?: string;
   limit?: number;
   method?: string;
@@ -104,7 +105,7 @@ class AstraClient {
         );
       } else {
         // Insert new document
-        await this.collection.insertOne({ document: tool });
+        await this.collection.insertOne(tool);
       }
     } catch (error) {
       throw new Error(`Failed to update tool: ${error instanceof Error ? error.message : String(error)}`);
@@ -206,6 +207,34 @@ class AstraClient {
       throw new Error(`Failed to list tables: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
+
+  async getTableMetadata(tableName: string, dbName?: string): Promise<any | null> {
+    if (!this.db) {
+      await this.connect();
+    }
+
+    try {
+      const targetDbName = dbName || this.dbName;
+      if (!targetDbName) {
+        throw new Error('Database name is required');
+      }
+      if (!tableName) {
+        throw new Error('Table name is required');
+      }
+
+      const targetDb = this.client!.db(this.endpoint!, { token: this.token });
+      const tables = await targetDb.listTables();
+      const match = tables.find(
+        (table: any) =>
+          table?.name === tableName || table?.id === tableName || table === tableName
+      );
+      return match || null;
+    } catch (error) {
+      throw new Error(
+        `Failed to get table metadata: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
 }
 
 // Utility function to extract all attributes from documents (including nested)
@@ -260,5 +289,3 @@ export function getAstraClient(): AstraClient {
   }
   return astraClientInstance;
 }
-
-

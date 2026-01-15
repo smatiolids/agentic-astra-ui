@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAstraClient, extractAttributes } from '@/lib/astraClient';
-import OpenAI from 'openai';
+import { generateToolSpecV2 } from '@/lib/toolSpecAgentV2';
+import { toSlug, isValidSlug } from '@/lib/utils';
+import { getAstraClient } from '@/lib/astraClient';
 
 export async function POST(request: NextRequest) {
   try {
-    const { dataType, name, dbName } = await request.json();
+    const { dataType, name, dbName, prompt, existingToolSpec, model } = await request.json();
 
     if (!name || !dataType) {
       return NextResponse.json(
@@ -13,117 +14,56 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get sample documents
-    const client = getAstraClient();
-    await client.connect();
-    const tool: any = {
-      [dataType === 'collection' ? 'collection_name' : 'table_name']: name,
-      db_name: dbName || process.env.ASTRA_DB_DB_NAME || '',
-    };
-
-    const documents = await client.getSampleDocuments(tool, 10);
-    const attributes = extractAttributes(documents);
-
-    if (documents.length === 0) {
+    if (dataType !== 'collection' && dataType !== 'table') {
       return NextResponse.json(
-        { success: false, error: `No documents found in ${dataType} "${name}"` },
-        { status: 404 }
+        { success: false, error: 'Data type must be "collection" or "table"' },
+        { status: 400 }
       );
     }
 
-    // Prepare sample data for OpenAI
-    const sampleData = documents.slice(0, 5).map((doc: any) => {
-      const { _id, ...rest } = doc;
-      return rest;
+    const { toolSpec, explanation } = await generateToolSpecV2({
+      dataType,
+      name,
+      dbName,
+      prompt,
+      existingToolSpec,
+      model: typeof model === 'string' && model.length > 0 ? model : undefined,
     });
 
-    // Initialize OpenAI client
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-
-    // Create prompt for OpenAI
-    const prompt = `You are an expert at creating database query tool specifications. Based on the following ${dataType} structure and sample data, generate a comprehensive tool specification in JSON format.
-
-${dataType} Name: ${name}
-Available Attributes: ${attributes.join(', ')}
-
-Sample Documents (first 5):
-${JSON.stringify(sampleData, null, 2)}
-
-Generate a tool specification JSON with the following structure:
-{
-  "name": "descriptive_tool_name",
-  "description": "Clear description of what this tool does",
-  "type": "tool",
-  "method": "find",
-  "${dataType === 'collection' ? 'collection_name' : 'table_name'}": "${name}",
-  "db_name": "${dbName || 'default'}",
-  "parameters": [
-    {
-      "param": "parameter_name",
-      "paramMode": "tool_param",
-      "type": "string|number|boolean|text|timestamp|float|vector",
-      "description": "Parameter description",
-      "attribute": "attribute_name_from_list",
-      "operator": "$eq|$gt|$gte|$lt|$lte|$in|$ne",
-      "required": true|false
-    }
-  ],
-  "projection": {
-    "attribute_name": 1
-  },
-  "limit": 10,
-  "enabled": true,
-  "tags": ["relevant", "tags"]
-}
-
-Return ONLY valid JSON, no markdown, no explanations.`;
-
-    // Call OpenAI
-    const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are an expert at creating database query tool specifications. Always return valid JSON only, no markdown formatting.',
-        },
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-      temperature: 0.3,
-      response_format: { type: 'json_object' },
-    });
-
-    const responseContent = completion.choices[0]?.message?.content;
-    if (!responseContent) {
-      throw new Error('No response from OpenAI');
-    }
-
-    // Parse the JSON response
-    let toolSpec;
-    try {
-      toolSpec = JSON.parse(responseContent);
-    } catch (parseError) {
-      // Try to extract JSON from markdown if present
-      const jsonMatch = responseContent.match(/```json\s*([\s\S]*?)\s*```/) || 
-                       responseContent.match(/```\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) {
-        toolSpec = JSON.parse(jsonMatch[1]);
-      } else {
-        throw new Error('Failed to parse OpenAI response as JSON');
-      }
-    }
-
-    // Ensure required fields are set
     toolSpec[dataType === 'collection' ? 'collection_name' : 'table_name'] = name;
     toolSpec.db_name = dbName || process.env.ASTRA_DB_DB_NAME || '';
     toolSpec.type = 'tool';
     toolSpec.enabled = toolSpec.enabled !== false;
 
-    // Normalize parameters
+    // Ensure tool name is a slug
+    if (toolSpec.name) {
+      const slugName = toSlug(toolSpec.name);
+      if (isValidSlug(slugName)) {
+        toolSpec.name = slugName;
+        
+        // Check for duplicate names
+        const client = getAstraClient();
+        const tools = await client.getTools();
+        const duplicateTool = tools.find((t) => t.name === slugName);
+        
+        if (duplicateTool) {
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: `A tool with the name "${slugName}" already exists. Please choose a different name.` 
+            },
+            { status: 409 }
+          );
+        }
+      } else {
+        // If generated name is not a valid slug, create one from collection/table name
+        toolSpec.name = toSlug(name);
+      }
+    } else {
+      // If no name was generated, create one from collection/table name
+      toolSpec.name = toSlug(name);
+    }
+
     if (toolSpec.parameters && Array.isArray(toolSpec.parameters)) {
       toolSpec.parameters = toolSpec.parameters.map((param: any) => ({
         ...param,
@@ -131,16 +71,22 @@ Return ONLY valid JSON, no markdown, no explanations.`;
       }));
     }
 
-    return NextResponse.json({ success: true, tool: toolSpec });
+    return NextResponse.json({ 
+      success: true, 
+      tool: toolSpec,
+      explanation: explanation || undefined, // Include explanation if present
+    });
   } catch (error) {
     console.error('Error generating tool:', error);
+    const message =
+      error instanceof Error ? error.message : 'Failed to generate tool specification';
+    const status = message.startsWith('No documents found') ? 404 : 500;
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to generate tool specification',
+        error: message,
       },
-      { status: 500 }
+      { status }
     );
   }
 }
-

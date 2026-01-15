@@ -19,6 +19,7 @@ export interface Tool {
   tags?: string[];
   type: string;
   name: string;
+  title?: string;
   description?: string;
   limit?: number;
   method?: string;
@@ -109,4 +110,3 @@ class AstraClient {
 }
 
 export const astraClient = new AstraClient();
-

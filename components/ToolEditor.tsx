@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Tool, ToolParameter } from '@/lib/astraClient';
+import { toSlug, isValidSlug } from '@/lib/utils';
 
 interface ToolEditorProps {
   tool: Tool | null;
@@ -9,6 +11,7 @@ interface ToolEditorProps {
 }
 
 export default function ToolEditor({ tool, onSave }: ToolEditorProps) {
+  const router = useRouter();
   const [formData, setFormData] = useState<Tool | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -24,6 +27,7 @@ export default function ToolEditor({ tool, onSave }: ToolEditorProps) {
   });
   const [availableObjects, setAvailableObjects] = useState<string[]>([]);
   const [loadingObjects, setLoadingObjects] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
 
   useEffect(() => {
     if (tool) {
@@ -138,14 +142,51 @@ export default function ToolEditor({ tool, onSave }: ToolEditorProps) {
   const handleSave = async () => {
     if (!formData) return;
 
+    // Validate and convert name to slug
+    if (!formData.name || formData.name.trim() === '') {
+      setNameError('Tool name is required');
+      return;
+    }
+
+    const slugName = toSlug(formData.name);
+    if (!isValidSlug(slugName)) {
+      setNameError('Tool name must be a valid slug (lowercase letters, numbers, and hyphens only)');
+      return;
+    }
+
+    // Check for duplicate names before saving
+    try {
+      const toolsResponse = await fetch('/api/tools');
+      const toolsData = await toolsResponse.json();
+      if (toolsResponse.ok && toolsData.success) {
+        const tools = toolsData.tools || [];
+        const duplicateTool = tools.find((t: Tool) => 
+          t.name === slugName && t._id !== formData._id
+        );
+        if (duplicateTool) {
+          setNameError(`A tool with the name "${slugName}" already exists`);
+          return;
+        }
+      }
+    } catch (fetchError) {
+      console.error('Error checking for duplicate tools:', fetchError);
+      // Continue with save attempt - backend will also check
+    }
+
+    setNameError(null);
+
     try {
       setSaving(true);
+      
+      // Update formData with slugified name
+      const toolToSave = { ...formData, name: slugName };
+      
       const response = await fetch('/api/tools', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(toolToSave),
       });
 
       const data = await response.json();
@@ -155,15 +196,36 @@ export default function ToolEditor({ tool, onSave }: ToolEditorProps) {
       }
 
       // Update formData with the saved tool (in case _id was added)
-      const savedTool = { ...formData };
-      if (data.tool?._id) {
-        savedTool._id = data.tool._id;
+      let savedTool = { ...toolToSave };
+      
+      // If this is a new tool (no _id), fetch tools to get the _id
+      if (!savedTool._id) {
+        try {
+          const toolsResponse = await fetch('/api/tools');
+          const toolsData = await toolsResponse.json();
+          if (toolsResponse.ok && toolsData.success) {
+            const tools = toolsData.tools || [];
+            const foundTool = tools.find((t: Tool) => t.name === savedTool.name);
+            if (foundTool?._id) {
+              savedTool._id = foundTool._id;
+            }
+          }
+        } catch (fetchError) {
+          console.error('Error fetching tools to get _id:', fetchError);
+        }
       }
+      
       setFormData(savedTool);
 
       // Call the onSave callback to refresh the tool list
       if (onSave) {
         await onSave(savedTool);
+      }
+
+      // Redirect to agentic-tool page with the tool ID
+      if (savedTool._id || savedTool.name) {
+        const toolId = savedTool._id || savedTool.name;
+        router.push(`/agentic-tool?toolId=${encodeURIComponent(toolId)}`);
       }
 
       // Show success message
@@ -447,12 +509,43 @@ export default function ToolEditor({ tool, onSave }: ToolEditorProps) {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Name *
+                  Name * (will be converted to slug)
                 </label>
                 <input
                   type="text"
                   value={formData.name || ''}
-                  onChange={(e) => updateField('name', e.target.value)}
+                  onChange={(e) => {
+                    const inputValue = e.target.value;
+                    // Auto-convert to slug as user types
+                    const slugValue = toSlug(inputValue);
+                    updateField('name', slugValue);
+                    setNameError(null);
+                  }}
+                  className={`w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 ${
+                    nameError 
+                      ? 'border-red-500 dark:border-red-500' 
+                      : 'border-gray-300 dark:border-gray-600'
+                  }`}
+                  placeholder="my-tool-name"
+                />
+                {nameError && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{nameError}</p>
+                )}
+                {formData.name && !nameError && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Slug: {formData.name}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Title
+                </label>
+                <input
+                  type="text"
+                  value={formData.title || ''}
+                  onChange={(e) => updateField('title', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200"
                 />
               </div>
@@ -997,4 +1090,3 @@ export default function ToolEditor({ tool, onSave }: ToolEditorProps) {
     </div>
   );
 }
-

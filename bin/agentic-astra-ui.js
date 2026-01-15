@@ -17,7 +17,7 @@ const nodeModulesPath = path.join(packageDir, 'node_modules');
 const nextPath = path.join(nodeModulesPath, '.bin', 'next');
 
 function runNextDev() {
-  const port = process.env.PORT || '3000';
+  const port = process.env.PORT || '5150';
   const hostname = process.env.HOSTNAME || 'localhost';
   
   console.log(`🚀 Starting Agentic Astra UI...`);
@@ -74,4 +74,3 @@ if (!fs.existsSync(nodeModulesPath) || !fs.existsSync(nextPath)) {
 } else {
   runNextDev();
 }
-
