@@ -1,7 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateToolSpecV2 } from '@/lib/toolSpecAgentV2';
+import { generateToolSpecV2 } from '@/agent/toolSpecAgentV2';
 import { toSlug, isValidSlug } from '@/lib/utils';
 import { getAstraClient } from '@/lib/astraClient';
+
+function getToolIdentity(tool: any): string | undefined {
+  if (!tool || typeof tool !== 'object') return undefined;
+  return tool._id || tool.tool_id;
+}
+
+function preserveExistingToolIdentity(targetToolSpec: any, existingToolSpec: any) {
+  if (!targetToolSpec || typeof targetToolSpec !== 'object') return;
+  if (!existingToolSpec || typeof existingToolSpec !== 'object') return;
+
+  if (existingToolSpec._id && !targetToolSpec._id) {
+    targetToolSpec._id = existingToolSpec._id;
+  }
+
+  if (existingToolSpec.tool_id && !targetToolSpec.tool_id) {
+    targetToolSpec.tool_id = existingToolSpec.tool_id;
+  }
+}
+
+function collectionHasVectorizeEnabled(collectionMetadata: any): boolean {
+  const service = collectionMetadata?.definition?.vector?.service;
+  return !!service;
+}
+
+function ensureVectorizeSearchQueryParameter(toolSpec: any) {
+  if (!Array.isArray(toolSpec.parameters)) {
+    toolSpec.parameters = [];
+  }
+
+  const existingIndex = toolSpec.parameters.findIndex((param: any) => {
+    if (!param || typeof param !== 'object') return false;
+    return param.attribute === '$vectorize' || param.param === 'search_query';
+  });
+
+  const vectorizeParam = {
+    param: 'search_query',
+    paramMode: 'tool_param',
+    type: 'string',
+    description: 'Natural language search query for semantic search on this vectorized collection',
+    attribute: '$vectorize',
+    required: false,
+    info: 'Auto-added because collection metadata has vectorize enabled',
+  };
+
+  if (existingIndex >= 0) {
+    toolSpec.parameters[existingIndex] = {
+      ...toolSpec.parameters[existingIndex],
+      ...vectorizeParam,
+    };
+    return;
+  }
+
+  toolSpec.parameters.unshift(vectorizeParam);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,6 +88,7 @@ export async function POST(request: NextRequest) {
     toolSpec.db_name = dbName || process.env.ASTRA_DB_DB_NAME || '';
     toolSpec.type = 'tool';
     toolSpec.enabled = toolSpec.enabled !== false;
+    preserveExistingToolIdentity(toolSpec, existingToolSpec);
 
     // Ensure tool name is a slug
     if (toolSpec.name) {
@@ -44,7 +99,26 @@ export async function POST(request: NextRequest) {
         // Check for duplicate names
         const client = getAstraClient();
         const tools = await client.getTools();
-        const duplicateTool = tools.find((t) => t.name === slugName);
+        const existingToolId = getToolIdentity(existingToolSpec);
+        const existingToolName =
+          existingToolSpec && typeof existingToolSpec === 'object' ? existingToolSpec.name : undefined;
+
+        const duplicateTool = tools.find((t) => {
+          if (t.name !== slugName) {
+            return false;
+          }
+
+          // Regenerating/improving an existing tool should be allowed to keep the same name.
+          if (existingToolId && getToolIdentity(t) === existingToolId) {
+            return false;
+          }
+
+          if (existingToolName && t.name === existingToolName) {
+            return false;
+          }
+
+          return true;
+        });
         
         if (duplicateTool) {
           return NextResponse.json(
@@ -69,6 +143,18 @@ export async function POST(request: NextRequest) {
         ...param,
         paramMode: param.paramMode || 'tool_param',
       }));
+    }
+
+    if (dataType === 'collection') {
+      try {
+        const client = getAstraClient();
+        const collectionMetadata = await client.getCollectionMetadata(name, dbName);
+        if (collectionHasVectorizeEnabled(collectionMetadata)) {
+          ensureVectorizeSearchQueryParameter(toolSpec);
+        }
+      } catch (metadataError) {
+        console.warn('Unable to inspect collection metadata for vectorize settings:', metadataError);
+      }
     }
 
     return NextResponse.json({ 

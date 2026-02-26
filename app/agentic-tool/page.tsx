@@ -31,6 +31,8 @@ function ToolSpecPageContent() {
   const [selectedModel, setSelectedModel] = useState('');
   const [loadingModels, setLoadingModels] = useState(false);
   const [loadingTool, setLoadingTool] = useState(false);
+  const [catalogCollectionMissing, setCatalogCollectionMissing] = useState(false);
+  const [catalogCollectionName, setCatalogCollectionName] = useState('tool_catalog');
 
   const editorTool = useMemo(() => {
     if (!toolSpec) {
@@ -75,6 +77,26 @@ function ToolSpecPageContent() {
     }
   }, [toolId]);
 
+  const promptCreateCatalogCollection = async (collectionName: string) => {
+    const confirmed = window.confirm(
+      `Collection "${collectionName}" was not found while loading tools. Do you want to create it now?`
+    );
+
+    if (!confirmed) {
+      return false;
+    }
+
+    const response = await fetch('/api/tools/catalog-collection', { method: 'POST' });
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || 'Failed to create catalog collection');
+    }
+
+    setCatalogCollectionMissing(false);
+    return true;
+  };
+
   const loadToolById = async (id: string) => {
     try {
       setLoadingTool(true);
@@ -83,8 +105,20 @@ function ToolSpecPageContent() {
       const data = await response.json();
       
       if (!response.ok || !data.success) {
+        if (data?.errorCode === 'CATALOG_COLLECTION_NOT_FOUND') {
+          setCatalogCollectionMissing(true);
+          const missingCollectionName = data.collectionName || 'tool_catalog';
+          setCatalogCollectionName(missingCollectionName);
+          const created = await promptCreateCatalogCollection(missingCollectionName);
+          if (created) {
+            await loadToolById(id);
+            return;
+          }
+        }
         throw new Error(data.error || 'Failed to load tools');
       }
+
+      setCatalogCollectionMissing(false);
       
       const tools = data.tools || [];
       const tool = tools.find((t: Tool) => t._id === id || t.name === id);
@@ -298,6 +332,11 @@ function ToolSpecPageContent() {
           <p className="text-gray-600 dark:text-gray-400 mt-1">
             Start with a collection/table selection, then describe the tool you want.
           </p>
+          {catalogCollectionMissing && (
+            <p className="text-sm text-amber-700 dark:text-amber-300 mt-2">
+              Catalog collection <span className="font-mono">{catalogCollectionName}</span> was missing. Create it to start saving/loading tools.
+            </p>
+          )}
         </div>
 
         <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-160px)] min-h-[600px]">

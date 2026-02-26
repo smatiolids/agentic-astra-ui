@@ -10,6 +10,11 @@ interface ToolEditorProps {
   onSave?: (savedTool: Tool) => void;
 }
 
+function getToolIdentity(tool: any): string | undefined {
+  if (!tool || typeof tool !== 'object') return undefined;
+  return tool._id || tool.tool_id;
+}
+
 export default function ToolEditor({ tool, onSave }: ToolEditorProps) {
   const router = useRouter();
   const [formData, setFormData] = useState<Tool | null>(null);
@@ -32,7 +37,7 @@ export default function ToolEditor({ tool, onSave }: ToolEditorProps) {
   useEffect(() => {
     if (tool) {
       // Check if this is a new tool (empty name and no _id)
-      const isEmptyTool = !tool.name && !tool._id && !tool.collection_name && !tool.table_name;
+      const isEmptyTool = !tool.name && !getToolIdentity(tool) && !tool.collection_name && !tool.table_name;
       setIsNewTool(isEmptyTool);
 
       if (isEmptyTool) {
@@ -160,9 +165,16 @@ export default function ToolEditor({ tool, onSave }: ToolEditorProps) {
       const toolsData = await toolsResponse.json();
       if (toolsResponse.ok && toolsData.success) {
         const tools = toolsData.tools || [];
-        const duplicateTool = tools.find((t: Tool) => 
-          t.name === slugName && t._id !== formData._id
-        );
+        const currentToolId = getToolIdentity(formData);
+        const duplicateTool = tools.find((t: Tool) => {
+          if (t.name !== slugName) {
+            return false;
+          }
+          if (currentToolId && getToolIdentity(t) === currentToolId) {
+            return false;
+          }
+          return true;
+        });
         if (duplicateTool) {
           setNameError(`A tool with the name "${slugName}" already exists`);
           return;
@@ -199,7 +211,7 @@ export default function ToolEditor({ tool, onSave }: ToolEditorProps) {
       let savedTool = { ...toolToSave };
       
       // If this is a new tool (no _id), fetch tools to get the _id
-      if (!savedTool._id) {
+      if (!getToolIdentity(savedTool)) {
         try {
           const toolsResponse = await fetch('/api/tools');
           const toolsData = await toolsResponse.json();
@@ -223,8 +235,8 @@ export default function ToolEditor({ tool, onSave }: ToolEditorProps) {
       }
 
       // Redirect to agentic-tool page with the tool ID
-      if (savedTool._id || savedTool.name) {
-        const toolId = savedTool._id || savedTool.name;
+      if (getToolIdentity(savedTool) || savedTool.name) {
+        const toolId = getToolIdentity(savedTool) || savedTool.name;
         router.push(`/agentic-tool?toolId=${encodeURIComponent(toolId)}`);
       }
 

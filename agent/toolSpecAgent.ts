@@ -1,5 +1,9 @@
 import OpenAI from 'openai';
 import { getAstraClient, extractAttributes } from '@/lib/astraClient';
+import {
+  SYSTEM_MESSAGE_V1,
+  buildToolSpecPromptV1,
+} from '@/agent/prompts';
 
 type DataType = 'collection' | 'table';
 
@@ -104,74 +108,24 @@ async function buildToolSpecGraph() {
               2
             )
           : '';
-      const prompt = `
-You are an expert at creating database query tool specifications. Based on the following ${state.dataType} structure and sample data, generate a comprehensive tool specification in JSON format.
       
-You are given a table schema  or collection attributes and sample data.
-You need to generate a tool specification for the data object.
-The tool specification should be in the format of a JSON object.
-While generate descriptions, define it in a way to make it easier for LLM to understand it.
-Use the sample data to identify data types, patterns and enums.
-
-${state.dataType === 'table' ?
-`IMPORTANT: Consider ONLY the partition keys, sorting keys and indexed columns as parameteres.
-IMPORTANT: Partition keys are mandatory parameters.
-IMPORTANT: For indexed date time or timestamps parameters, generate start_<column_name> and end_<column_name> parameters. use $gt and $lte operators.
-IMPORTANT: For indexed numeric parameters, generate min_<column_name> and max_<column_name> parameters. use $gte and $lte operators.
-IMPORTANT: If the column is a vector column, generate the embedding_model as text-embedding-3-small.
-` : ''} 
-
-IMPORTANT: Return ONLY valid JSON without any markdown formatting, code blocks, or additional text.
-
-${tableDefinition ? `Table schema (columns, partition keys, sort keys):\n${tableDefinition}\n` : ''}
-User Request:
-${userPrompt ? userPrompt : 'No additional instructions provided.'}
-
-${existingSpec ? `Existing Tool Spec (update this based on the new request):\n${existingSpec}\n` : ''}
-
-${state.dataType} Name: ${state.name}
-Available Attributes: ${state.attributes.join(', ')}
-
-Sample Documents (first 5):
-${JSON.stringify(state.sampleData, null, 2)}
-
-Generate a tool specification JSON with the following structure:
-{
-  "name": "descriptive_tool_name",
-  "description": "Clear description of what this tool does",
-  "type": "tool",
-  "method": "find",
-  "${state.dataType === 'collection' ? 'collection_name' : 'table_name'}": "${state.name}",
-  "db_name": "${state.dbName || 'default'}",
-  "parameters": [
-    {
-      "param": "parameter_name",
-      "paramMode": "tool_param",
-      "type": "string|number|boolean|text|timestamp|float|vector",
-      "description": "Parameter description",
-      "attribute": "attribute_name_from_list",
-      "operator": "$eq|$gt|$gte|$lt|$lte|$in|$ne",
-      "required": true|false
-      "info: "Why the parameters was considered, eg: it is an indexed column, a partition key or any other reason."
-    }
-  ],
-  "projection": {
-    "attribute_name": 1,
-  },
-  "limit": 10,
-  "enabled": true,
-  "tags": ["relevant", "tags"]
-}
-
-Return ONLY valid JSON, no markdown, no explanations.`;
+      const prompt = buildToolSpecPromptV1({
+        dataType: state.dataType,
+        name: state.name,
+        dbName: state.dbName,
+        userPrompt,
+        existingSpec,
+        tableDefinition,
+        attributes: state.attributes,
+        sampleData: state.sampleData,
+      });
 
       const completion = await openai.chat.completions.create({
         model: state.model || process.env.OPENAI_MODEL || 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
-            content:
-              'You are an expert at creating database query tool specifications. Always return valid JSON only, no markdown formatting.',
+            content: SYSTEM_MESSAGE_V1,
           },
           {
             role: 'user',
@@ -229,7 +183,7 @@ Return ONLY valid JSON, no markdown, no explanations.`;
                       },
                       type: {
                         type: 'string',
-                        enum: ['string', 'number', 'boolean', 'text', 'timestamp', 'float', 'vector'],
+                        enum: ['string', 'number', 'boolean', 'timestamp', 'float', 'vector'],
                       },
                       description: { type: 'string' },
                       attribute: { type: 'string' },

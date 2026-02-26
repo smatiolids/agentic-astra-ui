@@ -9,6 +9,9 @@ export default function ToolsPage() {
   const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [catalogCollectionMissing, setCatalogCollectionMissing] = useState(false);
+  const [catalogCollectionName, setCatalogCollectionName] = useState('tool_catalog');
+  const [creatingCatalogCollection, setCreatingCatalogCollection] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -25,9 +28,16 @@ export default function ToolsPage() {
       const data = await response.json();
       
       if (!response.ok || !data.success) {
+        if (data?.errorCode === 'CATALOG_COLLECTION_NOT_FOUND') {
+          setCatalogCollectionMissing(true);
+          setCatalogCollectionName(data.collectionName || 'tool_catalog');
+        } else {
+          setCatalogCollectionMissing(false);
+        }
         throw new Error(data.error || 'Failed to load tools');
       }
       
+      setCatalogCollectionMissing(false);
       const loadedTools = data.tools || [];
       // Sort tools alphabetically by name (case-insensitive)
       const sortedTools = loadedTools.sort((a: Tool, b: Tool) => {
@@ -43,6 +53,37 @@ export default function ToolsPage() {
       if (showLoading) {
         setLoading(false);
       }
+    }
+  };
+
+  const createCatalogCollection = async () => {
+    const confirmed = window.confirm(
+      `Collection "${catalogCollectionName}" was not found. Do you want to create it now?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setCreatingCatalogCollection(true);
+      setError(null);
+
+      const response = await fetch('/api/tools/catalog-collection', {
+        method: 'POST',
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to create catalog collection');
+      }
+
+      await loadTools();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create catalog collection');
+      console.error('Error creating catalog collection:', err);
+    } finally {
+      setCreatingCatalogCollection(false);
     }
   };
 
@@ -69,12 +110,28 @@ export default function ToolsPage() {
           </div>
           <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-2">Error Loading Tools</h2>
           <p className="text-gray-600 dark:text-gray-400 mb-4">{error}</p>
-          <button
-            onClick={() => loadTools()}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-          >
-            Retry
-          </button>
+          {catalogCollectionMissing && (
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Collection <span className="font-mono">{catalogCollectionName}</span> was not found. You can create it and retry.
+            </p>
+          )}
+          <div className="flex items-center justify-center gap-3">
+            {catalogCollectionMissing && (
+              <button
+                onClick={createCatalogCollection}
+                disabled={creatingCatalogCollection}
+                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50"
+              >
+                {creatingCatalogCollection ? 'Creating...' : 'Create Collection'}
+              </button>
+            )}
+            <button
+              onClick={() => loadTools()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              Retry
+            </button>
+          </div>
         </div>
       </div>
     );
